@@ -1,8 +1,10 @@
 using Azure;
 using Azure.AI.OpenAI;
 using MCP.Web.Client.Endpoints;
+using MCP.Web.Client.Services;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,13 +40,28 @@ builder.Services.AddChatClient(services =>
         )
         .UseFunctionInvocation()
         .Build());
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+    ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("Redis") ?? throw new InvalidOperationException("Falta la clave 'Redis' en appsettings.")));
 
-builder.Services.AddSingleton<IMcpClient>(_ =>
+builder.Services.AddScoped<IChatHistoryStore, RedisChatHistoryStore>();
+
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddScoped<IMcpClient>(sp  =>
 {
-    var transport = new SseClientTransport(new SseClientTransportOptions
+    var httpContext = sp.GetRequiredService<IHttpContextAccessor>().HttpContext!;
+    var httpClient = new HttpClient();
+    foreach (var header in httpContext.Request.Headers)
     {
-        Endpoint = new Uri(mcpUrl) // Ajusta al endpoint real del servidor MCP
-    });
+        httpClient.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+    }
+
+    var transportOptions = new SseClientTransportOptions
+    {
+        Endpoint = new Uri(mcpUrl)
+    };
+    
+    var transport = new SseClientTransport(transportOptions,httpClient);
 
     return McpClientFactory.CreateAsync(transport).GetAwaiter().GetResult();
 });
