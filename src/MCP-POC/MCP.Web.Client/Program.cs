@@ -31,6 +31,18 @@ if (string.IsNullOrWhiteSpace(mcpUrl))
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
+// Configure CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowBlazorClient", policy =>
+    {
+        policy.WithOrigins("http://localhost:5020", "https://localhost:7020")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 builder.Services.AddChatClient(services =>
     new ChatClientBuilder(
             new AzureOpenAIClient(
@@ -76,6 +88,10 @@ if (app.Environment.IsDevelopment())
 
 
 app.UseHttpsRedirection();
+
+// Enable CORS
+app.UseCors("AllowBlazorClient");
+
 app.MapGet("/", () => $"Hello MCP Server Client! {DateTime.Now}");
 app.MapChatEndpoints();
 

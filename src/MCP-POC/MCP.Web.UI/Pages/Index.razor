@@ -1,0 +1,221 @@
+@page "/"
+@using MCP.Web.UI.Models
+@using MCP.Web.UI.Services
+@inject ChatService ChatService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>MCP Chat</PageTitle>
+
+<div class="chat-container">
+    <div class="chat-header">
+        <h1>MCP Chat Interface</h1>
+        <div class="chat-id-section">
+            <label for="chatId">Chat ID:</label>
+            <input id="chatId" 
+                   type="text" 
+                   class="chat-id-input @(string.IsNullOrWhiteSpace(chatId) ? "input-error" : "")"
+                   @bind="chatId"
+                   @bind:event="oninput"
+                   @onchange="UpdateChatState"
+                   placeholder="Enter unique chat ID (e.g., user123)"
+                   disabled="@isLoading" />
+            @if (!string.IsNullOrWhiteSpace(chatId) && !chatState.IsValidChatId())
+            {
+                <span class="validation-error">Chat ID must be 1-50 characters, alphanumeric with - or _</span>
+            }
+        </div>
+    </div>
+
+    <div class="chat-messages" @ref="messagesContainer">
+        @if (messages.Count == 0)
+        {
+            <div class="empty-state">
+                <p>Welcome to MCP Chat!</p>
+                <p>Enter a Chat ID above and start your conversation.</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var message in messages)
+            {
+                <div class="message @(message.Role == ChatRoles.User ? "message-user" : "message-assistant")">
+                    <div class="message-header">
+                        <span class="message-role">@message.Role</span>
+                        <span class="message-time">@message.Timestamp.ToString("HH:mm:ss")</span>
+                    </div>
+                    <div class="message-content">
+                        @if (message.IsLoading)
+                        {
+                            <div class="typing-indicator">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(message.ErrorMessage))
+                        {
+                            <div class="error-content">
+                                <span class="error-icon">⚠️</span>
+                                @message.ErrorMessage
+                            </div>
+                        }
+                        else
+                        {
+                            @((MarkupString)FormatMessage(message.Content))
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(globalError))
+    {
+        <div class="global-error">
+            <span class="error-icon">❌</span>
+            @globalError
+            <button class="dismiss-error" @onclick="() => globalError = string.Empty">×</button>
+        </div>
+    }
+
+    <div class="chat-input-section">
+        <form @onsubmit="SendMessage" @onsubmit:preventDefault="true">
+            <div class="input-group">
+                <input type="text"
+                       class="message-input"
+                       @bind="currentMessage"
+                       @bind:event="oninput"
+                       placeholder="Type your message..."
+                       disabled="@(!chatState.IsValidChatId() || isLoading)"
+                       @ref="messageInput" />
+                <button type="submit" 
+                        class="send-button"
+                        disabled="@(!chatState.IsValidChatId() || isLoading || string.IsNullOrWhiteSpace(currentMessage))">
+                    @if (isLoading)
+                    {
+                        <span class="spinner"></span>
+                    }
+                    else
+                    {
+                        <span>Send</span>
+                    }
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@code {
+    private string _chatId = "";
+    private string chatId 
+    { 
+        get => _chatId; 
+        set 
+        { 
+            _chatId = value;
+            chatState.CurrentChatId = value;
+        } 
+    }
+    private string currentMessage = "";
+    private List<ChatMessage> messages = new();
+    private ChatState chatState = new();
+    private bool isLoading = false;
+    private string globalError = "";
+    private ElementReference messagesContainer;
+    private ElementReference messageInput;
+
+    protected override void OnInitialized()
+    {
+        chatState.CurrentChatId = chatId;
+    }
+
+    private async Task SendMessage()
+    {
+        if (!chatState.IsValidChatId() || string.IsNullOrWhiteSpace(currentMessage) || isLoading)
+            return;
+
+        var userMessage = new ChatMessage
+        {
+            Role = ChatRoles.User,
+            Content = currentMessage,
+            Timestamp = DateTime.Now
+        };
+
+        messages.Add(userMessage);
+        
+        var assistantMessage = new ChatMessage
+        {
+            Role = ChatRoles.Assistant,
+            Content = "",
+            Timestamp = DateTime.Now,
+            IsLoading = true
+        };
+        
+        messages.Add(assistantMessage);
+        
+        var messageToSend = currentMessage;
+        currentMessage = "";
+        isLoading = true;
+        globalError = "";
+        
+        StateHasChanged();
+        await ScrollToBottom();
+
+        try
+        {
+            var response = await ChatService.SendMessageAsync(chatId, messageToSend);
+            
+            if (response.Success)
+            {
+                assistantMessage.Content = response.Content ?? "No response received from the server.";
+                assistantMessage.IsLoading = false;
+            }
+            else
+            {
+                assistantMessage.IsLoading = false;
+                assistantMessage.ErrorMessage = response.Error ?? "Unknown error occurred";
+                assistantMessage.Content = "Failed to get response.";
+            }
+            
+            StateHasChanged();
+            await ScrollToBottom();
+        }
+        catch (Exception ex)
+        {
+            assistantMessage.IsLoading = false;
+            assistantMessage.ErrorMessage = $"Error: {ex.Message}";
+            globalError = $"Failed to send message: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+            await FocusMessageInput();
+        }
+    }
+
+    private string FormatMessage(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return "";
+
+        // Simple formatting for line breaks
+        return content.Replace("\n", "<br />");
+    }
+
+    private async Task ScrollToBottom()
+    {
+        await JSRuntime.InvokeVoidAsync("scrollToBottom", messagesContainer);
+    }
+
+    private async Task FocusMessageInput()
+    {
+        await JSRuntime.InvokeVoidAsync("focusElement", messageInput);
+    }
+
+    private void UpdateChatState()
+    {
+        chatState.CurrentChatId = chatId;
+        StateHasChanged();
+    }
+}
