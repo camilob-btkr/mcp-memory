@@ -100,15 +100,20 @@ public class ChatService
         }
 
         using var stream = await response.Content.ReadAsStreamAsync();
-        using var reader = new StreamReader(stream);
+        using var reader = new StreamReader(stream, bufferSize: 1024);
 
-        while (!reader.EndOfStream)
+        string? line;
+        while ((line = await reader.ReadLineAsync()) != null)
         {
-            var line = await reader.ReadLineAsync();
             if (!string.IsNullOrEmpty(line) && line.StartsWith("data: "))
             {
-                var data = line.Substring(6);
-                if (data != "[DONE]")
+                var data = line.Substring(6).Trim();
+                if (data == "[DONE]")
+                {
+                    break;
+                }
+                
+                if (!string.IsNullOrEmpty(data))
                 {
                     string? chunk = null;
                     try
@@ -119,12 +124,13 @@ public class ChatService
                     catch
                     {
                         // Si falla la deserialización, usar el dato tal cual
-                        chunk = data;
+                        chunk = data.Trim('"'); // Remove quotes if present
                     }
                     
                     if (!string.IsNullOrEmpty(chunk))
                     {
                         yield return chunk;
+                        await Task.Delay(1); // Small delay to allow UI updates
                     }
                 }
             }

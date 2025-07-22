@@ -188,7 +188,10 @@
                 responseContent.Append(chunk);
                 assistantMessage.Content = responseContent.ToString();
                 assistantMessage.IsLoading = false;
-                StateHasChanged();
+                
+                // Force immediate UI update
+                await InvokeAsync(StateHasChanged);
+                await Task.Yield(); // Allow UI thread to process
                 await ScrollToBottom();
             }
 
