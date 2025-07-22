@@ -4,13 +4,19 @@
 @inject ChatService ChatService
 @inject IJSRuntime JSRuntime
 
-<PageTitle>MCP Chat</PageTitle>
+<PageTitle>MCP Chat - Modern AI Assistant</PageTitle>
 
 <div class="chat-container">
     <div class="chat-header">
-        <h1>MCP Chat Interface</h1>
+        <div class="header-content">
+            <h1><i class="fas fa-robot"></i> MCP Chat Interface</h1>
+            <div class="connection-status">
+                <span class="status-dot"></span>
+                <span>Connected</span>
+            </div>
+        </div>
         <div class="chat-id-section">
-            <label for="chatId">Chat ID:</label>
+            <label for="chatId"><i class="fas fa-fingerprint"></i> Chat ID:</label>
             <input id="chatId" 
                    type="text" 
                    class="chat-id-input @(string.IsNullOrWhiteSpace(chatId) ? "input-error" : "")"
@@ -30,8 +36,12 @@
         @if (messages.Count == 0)
         {
             <div class="empty-state">
-                <p>Welcome to MCP Chat!</p>
+                <div class="empty-icon">
+                    <i class="fas fa-comments"></i>
+                </div>
+                <h2>Welcome to MCP Chat!</h2>
                 <p>Enter a Chat ID above and start your conversation.</p>
+                <p class="hint">Your AI assistant is ready to help</p>
             </div>
         }
         else
@@ -39,11 +49,15 @@
             @foreach (var message in messages)
             {
                 <div class="message @(message.Role == ChatRoles.User ? "message-user" : "message-assistant")">
-                    <div class="message-header">
-                        <span class="message-role">@message.Role</span>
-                        <span class="message-time">@message.Timestamp.ToString("HH:mm:ss")</span>
+                    <div class="message-avatar">
+                        <i class="@(message.Role == ChatRoles.User ? "fas fa-user" : "fas fa-robot")"></i>
                     </div>
-                    <div class="message-content">
+                    <div class="message-bubble">
+                        <div class="message-header">
+                            <span class="message-role">@message.Role</span>
+                            <span class="message-time">@message.Timestamp.ToString("HH:mm:ss")</span>
+                        </div>
+                        <div class="message-content">
                         @if (message.IsLoading)
                         {
                             <div class="typing-indicator">
@@ -55,7 +69,7 @@
                         else if (!string.IsNullOrEmpty(message.ErrorMessage))
                         {
                             <div class="error-content">
-                                <span class="error-icon">⚠️</span>
+                                <i class="fas fa-exclamation-triangle"></i>
                                 @message.ErrorMessage
                             </div>
                         }
@@ -63,6 +77,7 @@
                         {
                             @((MarkupString)FormatMessage(message.Content))
                         }
+                        </div>
                     </div>
                 </div>
             }
@@ -72,9 +87,11 @@
     @if (!string.IsNullOrEmpty(globalError))
     {
         <div class="global-error">
-            <span class="error-icon">❌</span>
+            <i class="fas fa-times-circle"></i>
             @globalError
-            <button class="dismiss-error" @onclick="() => globalError = string.Empty">×</button>
+            <button class="dismiss-error" @onclick="() => globalError = string.Empty">
+                <i class="fas fa-times"></i>
+            </button>
         </div>
     }
 
@@ -97,6 +114,7 @@
                     }
                     else
                     {
+                        <i class="fas fa-paper-plane"></i>
                         <span>Send</span>
                     }
                 </button>
