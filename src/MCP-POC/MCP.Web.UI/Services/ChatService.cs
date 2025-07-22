@@ -92,7 +92,6 @@ public class ChatService
         };
 
         using var response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
         
         if (!response.IsSuccessStatusCode)
         {
@@ -111,7 +110,22 @@ public class ChatService
                 var data = line.Substring(6);
                 if (data != "[DONE]")
                 {
-                    yield return data;
+                    string? chunk = null;
+                    try
+                    {
+                        // Deserializar el string JSON que viene en el SSE
+                        chunk = JsonSerializer.Deserialize<string>(data, _jsonOptions);
+                    }
+                    catch
+                    {
+                        // Si falla la deserialización, usar el dato tal cual
+                        chunk = data;
+                    }
+                    
+                    if (!string.IsNullOrEmpty(chunk))
+                    {
+                        yield return chunk;
+                    }
                 }
             }
         }

@@ -15,7 +15,8 @@ public static class ChatEndpoints
             [FromBody] string message,
             IChatClient chatClient,
             IMcpClient mcpClient,
-            IChatHistoryStore historyStore) =>
+            IChatHistoryStore historyStore,
+            HttpContext httpContext) =>
         {
             var history = await historyStore.LoadAsync(chatId);
 
@@ -24,37 +25,32 @@ public static class ChatEndpoints
             var messages = GetChatMessagesFromHistory(history);
             var tools = await mcpClient.ListToolsAsync();
 
-//             var messages = new List<ChatMessage>
-//             {
-// //                 new(ChatRole.System, """
-// //                                                      Eres un asistente experto en gestión de usuarios, enfocado en tareas administrativas simples.
-// //
-// //                                                      🎯 Tus herramientas MCP disponibles son:
-// //                                                      - `getFechaHoraActualUtc`: Devuelve la fecha y hora actual en formato UTC.
-// //                                                      - `saludar`: Saluda a un usuario por su nombre.
-// //
-// //                                                      🛠️ Usa estas herramientas cada vez que sea relevante. No inventes respuestas si una herramienta está disponible para resolver la solicitud.
-// //
-// //                                                      📌 Responde siempre en español profesional.
-// //                                      """),
-//                 new(ChatRole.User, message)
-//             };
-
             var options = new ChatOptions { Tools = [.. tools] };
             var sb = new StringBuilder();
+
+            // Configure SSE response
+            httpContext.Response.Headers.Add("Content-Type", "text/event-stream");
+            httpContext.Response.Headers.Add("Cache-Control", "no-cache");
+            httpContext.Response.Headers.Add("Connection", "keep-alive");
 
             await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options))
             {
                 sb.Append(update);
+                
+                // Send each chunk as SSE
+                var chunk = $"data: {System.Text.Json.JsonSerializer.Serialize(update.ToString())}\n\n";
+                await httpContext.Response.WriteAsync(chunk);
+                await httpContext.Response.Body.FlushAsync();
             }
             
+            // Send completion signal
+            await httpContext.Response.WriteAsync("data: [DONE]\n\n");
+            await httpContext.Response.Body.FlushAsync();
+            
+            // Save complete response to history
             var assistantReply = sb.ToString();
-            
-            history.Add(new ChatHistoryEntry(ChatRole.Assistant.Value,assistantReply));
-            
+            history.Add(new ChatHistoryEntry(ChatRole.Assistant.Value, assistantReply));
             await historyStore.SaveAsync(chatId, history);
-
-            return Results.Ok(assistantReply);
         });
 
         return app;

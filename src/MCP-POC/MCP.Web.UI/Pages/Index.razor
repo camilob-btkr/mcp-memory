@@ -163,22 +163,22 @@
 
         try
         {
-            var response = await ChatService.SendMessageAsync(chatId, messageToSend);
+            var responseContent = new System.Text.StringBuilder();
             
-            if (response.Success)
+            await foreach (var chunk in ChatService.SendMessageStreamAsync(chatId, messageToSend))
             {
-                assistantMessage.Content = response.Content ?? "No response received from the server.";
+                responseContent.Append(chunk);
+                assistantMessage.Content = responseContent.ToString();
                 assistantMessage.IsLoading = false;
+                StateHasChanged();
+                await ScrollToBottom();
             }
-            else
+
+            if (string.IsNullOrEmpty(assistantMessage.Content))
             {
-                assistantMessage.IsLoading = false;
-                assistantMessage.ErrorMessage = response.Error ?? "Unknown error occurred";
-                assistantMessage.Content = "Failed to get response.";
+                assistantMessage.Content = "No response received from the server.";
+                assistantMessage.ErrorMessage = "Empty response";
             }
-            
-            StateHasChanged();
-            await ScrollToBottom();
         }
         catch (Exception ex)
         {
